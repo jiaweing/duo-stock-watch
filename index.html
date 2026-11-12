@@ -7,11 +7,11 @@
 <style>
   /* One block, centered both ways. Black while there is no stock, white the moment there is. */
   :root {
-    --bg: #000000; --fg: #f5f5f7; --muted: #86868b; --card: #1d1d1f; --accent: #2997ff; --on-accent: #ffffff;
+    --bg: #000000; --fg: #f5f5f7; --muted: #86868b; --card: #1d1d1f; --accent: #2997ff; --on-accent: #ffffff; --shade: rgba(0, 0, 0, 0.38);
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
     color-scheme: dark;
   }
-  body.in { --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --card: #f5f5f7; --accent: #0071e3; color-scheme: light; }
+  body.in { --shade: rgba(255, 255, 255, 0.75); --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --card: #f5f5f7; --accent: #0071e3; color-scheme: light; }
   html, body { height: 100%; margin: 0; }
   [hidden] { display: none !important; }
   body {
@@ -55,8 +55,10 @@
   #stage { width: 100%; height: min(50vh, 520px); cursor: grab; touch-action: none; }
   #stage:active { cursor: grabbing; }
   main { position: relative; z-index: 1; }
-  /* A soft halo in the page colour keeps the words readable when the phone is zoomed in behind them. */
-  h1, .sub { text-shadow: 0 0 4px var(--bg), 0 0 14px var(--bg), 0 0 32px var(--bg), 0 0 60px var(--bg); }
+  /* A tight, light drop shadow keeps the words readable when the phone is zoomed in behind them. */
+  h1 { text-shadow: 0 1px 2px var(--shade), 0 6px 28px var(--shade); }
+  .sub { text-shadow: 0 1px 2px var(--shade), 0 2px 12px var(--shade); }
+  body.phone .sub { color: var(--fg); opacity: 0.82; } /* grey disappears against the wallpaper */
   #phone {
     position: fixed; z-index: 2; width: 40px; height: 40px; padding: 0; display: grid; place-items: center;
     right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
