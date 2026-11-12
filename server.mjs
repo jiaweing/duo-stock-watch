@@ -217,6 +217,16 @@ const server = createServer(async (req, res) => {
     return send(res, 200, await readFile(join(HERE, "index.html"), "utf8"), "text/html");
   }
   if (req.method === "GET" && url.pathname === "/api/state") return send(res, 200, publicState());
+  if (req.method === "GET" && url.pathname === "/model/duo.usdz") {
+    // Optional 3D background, fetched by scripts/get-model.sh. Absent unless you ran that script.
+    try {
+      const file = await readFile(join(HERE, "model", "duo.usdz"));
+      res.writeHead(200, { "content-type": "model/vnd.usdz+zip", "cache-control": "max-age=86400" });
+      return res.end(file);
+    } catch {
+      return send(res, 404, { error: "no model" });
+    }
+  }
   if (req.method === "POST" && url.pathname === "/api/config") {
     const origin = req.headers.origin;
     if (origin && new URL(origin).host !== req.headers.host) return send(res, 403, { error: "forbidden" });

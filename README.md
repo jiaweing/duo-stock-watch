@@ -43,6 +43,37 @@ To use another port:
 PORT=5000 node server.mjs
 ```
 
+## Optional: 3D iPhone Duo background
+
+The page can show Apple's own iPhone Duo model behind the text. Drag to turn it, scroll to zoom.
+
+![No stock screen with the iPhone Duo model behind the text](screenshots/with-model.png)
+
+The model is not in this repository, because it belongs to Apple. A script downloads it from
+apple.com to your machine instead:
+
+```bash
+./scripts/get-model.sh
+```
+
+Then reload the page. What the script does:
+
+1. Downloads Apple's AR model (`.usdz`, about 8 MB) from the iPhone Duo page on apple.com.
+2. Flattens it into one layer with `usdcat`, because browsers cannot follow the references inside
+   Apple's file.
+3. Saves the result as `model/duo.usdz`, which is gitignored.
+
+Notes:
+
+- macOS only. `usdcat` ships with macOS; there is nothing to install.
+- If Apple moves the file, pass the new address: `./scripts/get-model.sh <url>`. Find it by
+  searching the source of apple.com/iphone-duo for `.usdz`.
+- The model is Apple's copyrighted work. Keep it on your machine. Do not commit or share it.
+- To remove the background, delete the `model` folder.
+- The model is drawn with [three.js](https://threejs.org), loaded from a CDN only when the model
+  is present. Without it the page is plain and loads nothing extra.
+- It shows the phone closed. The file has no fold animation the browser can play.
+
 ## Using the page
 
 | Control | What it does |
@@ -140,6 +171,8 @@ Issues and fixes are welcome.
 | `server.mjs` | The checker and local web server |
 | `index.html` | The page |
 | `config.json` | Your saved country and postcode. Created on first change, not committed. |
+| `scripts/get-model.sh` | Downloads and prepares the optional 3D model |
+| `model/` | The downloaded model. Created by the script, not committed. |
 
 ## Disclaimer
 
