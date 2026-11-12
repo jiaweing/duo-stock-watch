@@ -49,7 +49,7 @@
   button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
   button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   /* Optional 3D phone, in its own block above the text. Drag to turn it, scroll to zoom. */
-  #bg { display: block; width: 100%; height: min(44vh, 420px); cursor: grab; touch-action: none; outline: none; }
+  #bg { display: block; width: 100%; height: min(50vh, 520px); cursor: grab; touch-action: none; outline: none; }
   #bg:active { cursor: grabbing; }
   body.phone h1 { font-size: clamp(44px, 10vw, 104px); }
   body.phone main { gap: 18px; }
@@ -136,9 +136,8 @@
       const left = Math.max(0, Math.round((state.nextAt - now) / 1000));
       sub.textContent = left ? "Next try in " + clock(left) : "Trying now";
     } else if (state.checkedAt) {
-      const ago = Math.max(0, Math.round((now - state.checkedAt) / 1000));
       const left = Math.max(0, Math.round((state.nextAt - now) / 1000));
-      sub.textContent = "Checked " + clock(ago) + " ago \u00b7 " + (left ? "next check in " + clock(left) : "checking now");
+      sub.textContent = left ? "Next check in " + clock(left) : "Checking now";
     } else sub.textContent = "";
   }
 
@@ -309,12 +308,12 @@ try {
   const phone = foldable(THREE, await new USDLoader().loadAsync("/model/duo.usdz"));
   scene.add(phone.group);
   const reach = phone.width;
-  camera.position.set(reach * 0.75, reach * 0.3, reach * 2.3);
+  camera.position.set(reach * 0.5, reach * 0.2, reach * 1.55); // close enough that the phone nearly fills the block
 
   const controls = new OrbitControls(camera, canvas);
   controls.enablePan = false;
   controls.enableDamping = true;
-  controls.minDistance = reach * 1.2;
+  controls.minDistance = reach * 0.9;
   controls.maxDistance = reach * 5;
   const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   controls.autoRotate = !calm;
