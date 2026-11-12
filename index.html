@@ -49,15 +49,20 @@
   button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
   button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   /* Optional 3D phone, in its own block above the text. Drag to turn it, scroll to zoom. */
-  #bg { display: block; width: 100%; height: min(50vh, 520px); cursor: grab; touch-action: none; outline: none; }
-  #bg:active { cursor: grabbing; }
+  /* The drawing covers the whole page behind the text, so zooming in never shows a cut-off edge.
+     #stage is the empty block above the text that the phone sits in and that takes the dragging. */
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+  #stage { width: 100%; height: min(50vh, 520px); cursor: grab; touch-action: none; }
+  #stage:active { cursor: grabbing; }
+  main { position: relative; z-index: 1; }
   body.phone h1 { font-size: clamp(44px, 10vw, 104px); }
   body.phone main { gap: 18px; }
 </style>
 </head>
 <body>
+<canvas id="bg" aria-hidden="true" hidden></canvas>
 <main>
-  <canvas id="bg" aria-hidden="true" hidden></canvas>
+  <div id="stage" aria-hidden="true" hidden></div>
   <h1 id="headline">Checking…</h1>
   <ul class="hits" id="hits" hidden></ul>
   <div class="sub" id="sub"></div>
@@ -240,6 +245,42 @@ function foldable(THREE, source) {
   const hinge = (all.min.x + all.max.x) / 2, eps = width * 0.004, pivotZ = all.max.z;
   const half = (all.max.x - hinge) / 2, midY = (all.min.y + all.max.y) / 2;
 
+  // In Apple's unfolded pose the outer (cover) display shows a blank image, so the closed phone would
+  // have a black front. Light it with the middle of the inner display's wallpaper, at the same scale.
+  const area = (p) => (p.box.max.x - p.box.min.x) * (p.box.max.y - p.box.min.y);
+  const flat = (p) => p.box.max.z - p.box.min.z < width * 0.001;
+  const wall = real.filter((p) => p.material.emissiveMap && flat(p)).sort((a, b) => area(b) - area(a))[0];
+  const outer = Math.min(...real.filter((p) => p.box.max.x <= hinge + eps).map((p) => p.box.min.z)); // outside face of the left half
+  const cover = real
+    .filter((p) => p !== wall && flat(p) && p.box.max.x <= hinge + eps && p.box.min.z < outer + width * 0.002)
+    .sort((a, b) => area(b) - area(a))[0];
+  if (wall && cover && wall.geo.attributes.uv && area(cover) > area(wall) * 0.2) {
+    // Work out how the wallpaper's picture is laid across the inner display (u,v per metre of x,y)...
+    const wp = wall.geo.attributes.position, wuv = wall.geo.attributes.uv, wm = wall.box.getCenter(new THREE.Vector3());
+    let x0 = 0, x1 = 0, y0 = 0, y1 = 0;
+    for (let i = 1; i < wp.count; i++) {
+      if (wp.getX(i) < wp.getX(x0)) x0 = i; if (wp.getX(i) > wp.getX(x1)) x1 = i;
+      if (wp.getY(i) < wp.getY(y0)) y0 = i; if (wp.getY(i) > wp.getY(y1)) y1 = i;
+    }
+    const dx = wp.getX(x1) - wp.getX(x0), dy = wp.getY(y1) - wp.getY(y0);
+    const ux = (wuv.getX(x1) - wuv.getX(x0)) / dx, vx = (wuv.getY(x1) - wuv.getY(x0)) / dx;
+    const uy = (wuv.getX(y1) - wuv.getX(y0)) / dy, vy = (wuv.getY(y1) - wuv.getY(y0)) / dy;
+    const u0 = wuv.getX(x0) - ux * (wp.getX(x0) - wm.x) - uy * (wp.getY(x0) - wm.y);
+    const v0 = wuv.getY(x0) - vx * (wp.getX(x0) - wm.x) - vy * (wp.getY(x0) - wm.y);
+    // ...then lay the same picture across the cover display, mirrored so it reads the right way round.
+    const cp = cover.geo.attributes.position, cm = cover.box.getCenter(new THREE.Vector3());
+    const uv = new Float32Array(cp.count * 2);
+    for (let i = 0; i < cp.count; i++) {
+      const x = -(cp.getX(i) - cm.x), y = cp.getY(i) - cm.y;
+      uv[i * 2] = u0 + ux * x + uy * y; uv[i * 2 + 1] = v0 + vx * x + vy * y;
+    }
+    cover.geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    cover.material = wall.material.clone();
+    cover.material.emissiveMap = wall.material.emissiveMap.clone(); // own copy, so the two screens animate apart
+    cover.lit = true;
+    wall.material.emissiveMap.center.set(0.5, 0.5);
+  }
+
   const group = new THREE.Group(), leaf = new THREE.Group(), bend = [];
   leaf.position.set(hinge, 0, pivotZ);
   group.add(leaf);
@@ -282,12 +323,20 @@ function foldable(THREE, source) {
       b.pos.needsUpdate = true; if (b.nor) b.nor.needsUpdate = true;
     }
     group.position.set(-(hinge + half * t), -midY, -pivotZ);
+    // The screens hand over as it moves: the inner wallpaper comes up and settles from a slight
+    // zoom while it unfolds, and the cover display fades in as it closes.
+    if (wall) {
+      const open = 1 - t, ease = open * open * (3 - 2 * open);
+      wall.material.emissiveIntensity = ease;
+      wall.material.emissiveMap.repeat.setScalar(1 / (1 + 0.18 * (1 - ease)));
+      if (cover && cover.lit) cover.material.emissiveIntensity = Math.min(1, Math.max(0, (t - 0.55) / 0.45));
+    }
   }
   set(1);
   return { group, set, width: all.max.x - all.min.x };
 }
 
-const canvas = document.getElementById("bg"), fold = document.getElementById("fold"), toggle = document.getElementById("phone");
+const canvas = document.getElementById("bg"), stage = document.getElementById("stage"), fold = document.getElementById("fold"), toggle = document.getElementById("phone");
 try {
   const probe = await fetch("/model/duo.usdz", { method: "HEAD" });
   if (!probe.ok) throw new Error("no model");
@@ -310,32 +359,36 @@ try {
   const reach = phone.width;
   camera.position.set(reach * 0.5, reach * 0.2, reach * 1.55); // close enough that the phone nearly fills the block
 
-  const controls = new OrbitControls(camera, canvas);
+  const controls = new OrbitControls(camera, stage);
   controls.enablePan = false;
   controls.enableDamping = true;
-  controls.minDistance = reach * 0.9;
+  controls.minDistance = reach * 0.6;
   controls.maxDistance = reach * 5;
   const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   controls.autoRotate = !calm;
   controls.autoRotateSpeed = 1.2;
 
-  const resize = () => {
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    if (!w || !h) return;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
+  // The drawing fills the window; each frame the view is shifted and scaled so the phone sits in,
+  // and is sized to, the stage block above the text.
+  const resize = () => renderer.setSize(window.innerWidth, window.innerHeight, false);
+  window.addEventListener("resize", resize);
+  resize();
+  const frame = () => {
+    const W = window.innerWidth, H = window.innerHeight, box = stage.getBoundingClientRect();
+    if (!box.height) return;
+    camera.aspect = W / H;
+    camera.zoom = box.height / H; // the lens covers the whole window, so shrink the view to the stage's share of it
+    camera.setViewOffset(W, H, W / 2 - (box.left + box.width / 2), H / 2 - (box.top + box.height / 2), W, H);
     camera.updateProjectionMatrix();
   };
-  new ResizeObserver(resize).observe(canvas);
 
   // Show or hide the phone block. Hidden, the text sits alone in the middle of the page again.
   let hidden = false;
   try { hidden = localStorage.getItem("duo-phone-hidden") === "1"; } catch (e) {}
   const apply = () => {
-    canvas.hidden = hidden; fold.hidden = hidden; toggle.hidden = false;
+    canvas.hidden = hidden; stage.hidden = hidden; fold.hidden = hidden; toggle.hidden = false;
     document.body.classList.toggle("phone", !hidden);
     toggle.textContent = hidden ? "Show phone" : "Hide phone";
-    if (!hidden) resize();
   };
   toggle.addEventListener("click", () => {
     hidden = !hidden;
@@ -353,6 +406,7 @@ try {
       phone.set(at);
     }
     if (hidden) return;
+    frame();
     controls.update();
     renderer.render(scene, camera);
   });
@@ -363,7 +417,7 @@ try {
     fold.textContent = target ? "Unfold" : "Fold";
   });
 } catch (error) {
-  canvas.hidden = true; fold.hidden = true; toggle.hidden = true;
+  canvas.hidden = true; stage.hidden = true; fold.hidden = true; toggle.hidden = true;
   document.body.classList.remove("phone");
 }
 </script>

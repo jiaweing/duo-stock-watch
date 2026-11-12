@@ -76,8 +76,9 @@ Notes:
 - The model is drawn with [three.js](https://threejs.org), loaded from a CDN only when the model
   is present. Without it the page is plain and loads nothing extra.
 - Apple's file has two still poses and no fold animation. The page makes the fold itself by
-  bending the unfolded pose at the hinge, so the crease is sharper than on the real device, and
-  the cover display is dark when closed.
+  bending the unfolded pose at the hinge, so the crease is sharper than on the real device. The
+  wallpaper fades and settles as it opens, and the cover display shows the middle of the same
+  wallpaper when closed, because Apple's unfolded pose leaves that screen blank.
 
 ## Using the page
 
