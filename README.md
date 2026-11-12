@@ -2,8 +2,8 @@
 
 One page that answers one question: which Apple Store has an iPhone Duo for pickup right now.
 
-It runs on your own computer. A small local server asks Apple's pickup endpoint every 15 seconds and
-the page shows the result.
+It runs on your own computer. A small local server asks Apple's pickup endpoint about once a minute
+and the page shows the result.
 
 - **Black screen**: no stock.
 - **White screen**: in stock, with the configuration, the store, and a link to buy.
@@ -96,14 +96,31 @@ The endpoint is unofficial. Apple can change or remove it at any time.
 
 ## Rate limits
 
-Apple blocks networks that ask too often. A blocked request comes back as HTTP 541.
+Apple blocks networks that ask too often. A blocked request comes back as HTTP 541, with a
+misleading "Page Not Found" body. Apple publishes no limit, so the numbers below are what other
+people's checkers have reported, not guarantees:
 
-- The server normally asks once every 15 seconds and never more than once every 5.
-- After a block it waits 5, then 10, 20, and 30 minutes between tries.
-- Running several copies, or switching country over and over, makes a block more likely.
+| Reported pace | Reported result |
+| --- | --- |
+| About 30 requests back to back | Blocked for 10 to 15 minutes |
+| About 6 requests a minute | Blocked for about 43 minutes |
+| 1 request every 30 seconds | Blocked within about an hour |
+| 1 request every 45 to 120 seconds | Ran for hours without a block |
 
-Please keep the interval as it is. Faster polling gets your network blocked and does not find stock
-meaningfully sooner.
+So this server:
+
+- asks once every 60 to 75 seconds, at a slightly random gap;
+- never asks more than once every 20 seconds, even when you switch country;
+- waits 15, then 30, then 45 minutes after a block;
+- shows **Blocked** with a countdown, and never reports a blocked check as "No stock".
+
+Other things that get you blocked:
+
+- Running several copies, or several different checkers, on one network.
+- Hosting it on a cloud server or behind a VPN. Apple is reported to block datacenter addresses on
+  sight, so run it at home.
+
+The cost of the slow pace: a restock that sells out in under a minute can be missed.
 
 ## Known limits
 

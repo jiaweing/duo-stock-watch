@@ -16,9 +16,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 4173;
 const CONFIG_FILE = join(HERE, "config.json");
 
-const EVERY_MS = 15_000; // normal gap between checks
-const MIN_GAP_MS = 5_000; // never hit Apple more often than this, whatever happens
-const BLOCKED_MIN = [5, 10, 20, 30]; // minutes to wait after each block in a row
+// Apple publishes no limit for this endpoint. Other people's checkers report blocks (HTTP 541) at
+// roughly 4 to 6 requests a minute and within an hour at one request every 30 seconds, while one
+// request every 45 to 120 seconds has run for hours. So: once every 60 to 75 seconds, with jitter.
+const everyMs = () => 60_000 + Math.random() * 15_000;
+const MIN_GAP_MS = 20_000; // never hit Apple more often than this, whatever happens
+const BLOCKED_MIN = [15, 30, 45]; // minutes to wait after each block in a row
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 
@@ -142,7 +145,7 @@ function notifyMac(found) {
 
 async function tick() {
   const mine = generation;
-  let wait = EVERY_MS;
+  let wait = everyMs();
   try {
     if (!cookie) await refreshCookie();
     const result = await askApple();
