@@ -55,6 +55,8 @@
   #stage { width: 100%; height: min(50vh, 520px); cursor: grab; touch-action: none; }
   #stage:active { cursor: grabbing; }
   main { position: relative; z-index: 1; }
+  /* A soft halo in the page colour keeps the words readable when the phone is zoomed in behind them. */
+  h1, .sub { text-shadow: 0 0 4px var(--bg), 0 0 14px var(--bg), 0 0 32px var(--bg), 0 0 60px var(--bg); }
   #phone {
     position: fixed; z-index: 2; width: 40px; height: 40px; padding: 0; display: grid; place-items: center;
     right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
