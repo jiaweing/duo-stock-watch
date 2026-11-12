@@ -55,6 +55,12 @@
   #stage { width: 100%; height: min(50vh, 520px); cursor: grab; touch-action: none; }
   #stage:active { cursor: grabbing; }
   main { position: relative; z-index: 1; }
+  #phone {
+    position: fixed; z-index: 2; width: 40px; height: 40px; padding: 0; display: grid; place-items: center;
+    right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    color: var(--muted);
+  }
+  #phone:hover { color: var(--fg); }
   body.phone h1 { font-size: clamp(44px, 10vw, 104px); }
   body.phone main { gap: 18px; }
 </style>
@@ -71,10 +77,13 @@
     <select id="country" aria-label="Country"></select>
     <input id="place" type="text" aria-label="Postcode or city" autocomplete="off" spellcheck="false" hidden>
     <button id="alerts" type="button" aria-pressed="false">Alerts off</button>
-    <button id="fold" type="button" hidden>Unfold</button>
-    <button id="phone" type="button" hidden>Hide phone</button>
   </div>
 </main>
+<button id="phone" type="button" hidden aria-label="Hide phone" title="Hide phone">
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="4.5" y="3.5" width="15" height="17" rx="3"></rect><path d="M12 3.5v17"></path><path id="phoneSlash" d="M3 21 21 3" hidden></path>
+  </svg>
+</button>
 
 <script>
 (() => {
@@ -336,7 +345,7 @@ function foldable(THREE, source) {
   return { group, set, width: all.max.x - all.min.x };
 }
 
-const canvas = document.getElementById("bg"), stage = document.getElementById("stage"), fold = document.getElementById("fold"), toggle = document.getElementById("phone");
+const canvas = document.getElementById("bg"), stage = document.getElementById("stage"), toggle = document.getElementById("phone"), slash = document.getElementById("phoneSlash");
 try {
   const probe = await fetch("/model/duo.usdz", { method: "HEAD" });
   if (!probe.ok) throw new Error("no model");
@@ -386,9 +395,11 @@ try {
   let hidden = false;
   try { hidden = localStorage.getItem("duo-phone-hidden") === "1"; } catch (e) {}
   const apply = () => {
-    canvas.hidden = hidden; stage.hidden = hidden; fold.hidden = hidden; toggle.hidden = false;
+    canvas.hidden = hidden; stage.hidden = hidden; toggle.hidden = false;
     document.body.classList.toggle("phone", !hidden);
-    toggle.textContent = hidden ? "Show phone" : "Hide phone";
+    slash.hidden = !hidden; // the icon is a phone; a line through it means the phone is hidden
+    toggle.title = hidden ? "Show phone" : "Hide phone";
+    toggle.setAttribute("aria-label", toggle.title);
   };
   toggle.addEventListener("click", () => {
     hidden = !hidden;
@@ -396,13 +407,16 @@ try {
     apply();
   });
 
-  // Fold state eases toward its target: 1 closed, 0 unfolded.
-  let target = location.hash === "#unfolded" ? 0 : 1, at = target, last = performance.now();
+  // The phone follows the stock: closed while there is none, and it unfolds when some appears.
+  // "in" is the class the page puts on <body> for the in-stock (white) screen.
+  const wanted = () => (document.body.classList.contains("in") ? 0 : 1);
+  let target = wanted(), at = target, last = performance.now();
   phone.set(at);
   renderer.setAnimationLoop((now) => {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    target = wanted();
     if (at !== target) {
-      at = calm || Math.abs(target - at) < 0.002 ? target : at + (target - at) * (1 - Math.exp(-dt * 4.5));
+      at = calm || Math.abs(target - at) < 0.002 ? target : at + (target - at) * (1 - Math.exp(-dt * 3));
       phone.set(at);
     }
     if (hidden) return;
@@ -411,13 +425,8 @@ try {
     renderer.render(scene, camera);
   });
   apply();
-  fold.textContent = target ? "Unfold" : "Fold";
-  fold.addEventListener("click", () => {
-    target = target ? 0 : 1;
-    fold.textContent = target ? "Unfold" : "Fold";
-  });
 } catch (error) {
-  canvas.hidden = true; stage.hidden = true; fold.hidden = true; toggle.hidden = true;
+  canvas.hidden = true; stage.hidden = true; toggle.hidden = true;
   document.body.classList.remove("phone");
 }
 </script>
