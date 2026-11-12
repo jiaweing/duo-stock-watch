@@ -8,8 +8,7 @@ and the page shows the result.
 - **Black screen**: no stock.
 - **White screen**: in stock, with the configuration, the store, and a link to buy.
 
-No account, no hosting, nothing to install. The folding phone in the background is drawn with
-[three.js](https://threejs.org), loaded from a CDN; the page works without it.
+No account, no hosting, no dependencies.
 
 ## Screenshots
 
