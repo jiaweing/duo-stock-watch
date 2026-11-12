@@ -10,6 +10,18 @@ the page shows the result.
 
 No account, no hosting, no dependencies.
 
+## Screenshots
+
+Captured from the real page with sample data.
+
+| No stock | In stock |
+| --- | --- |
+| ![Black screen reading No stock](screenshots/no-stock.png) | ![White screen reading In stock, listing two configurations with their stores](screenshots/in-stock.png) |
+
+When Apple is rate limiting your network:
+
+![Black screen reading Blocked, with a countdown to the next try](screenshots/blocked.png)
+
 ## Quick start
 
 Needs [Node.js](https://nodejs.org) 20 or newer.
