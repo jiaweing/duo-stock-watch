@@ -81,7 +81,7 @@
 </main>
 <button id="phone" type="button" hidden aria-label="Hide phone" title="Hide phone">
   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <rect x="4.5" y="3.5" width="15" height="17" rx="3"></rect><path d="M12 3.5v17"></path><path id="phoneSlash" d="M3 21 21 3" hidden></path>
+    <rect x="7" y="2.5" width="10" height="19" rx="2.6"></rect><path d="M10.6 18.4h2.8"></path><path id="phoneSlash" d="M3.5 20.5 20.5 3.5" hidden></path>
   </svg>
 </button>
 
@@ -392,8 +392,7 @@ try {
   };
 
   // Show or hide the phone block. Hidden, the text sits alone in the middle of the page again.
-  let hidden = false;
-  try { hidden = localStorage.getItem("duo-phone-hidden") === "1"; } catch (e) {}
+  let hidden = false; // the phone is always there when the page opens
   const apply = () => {
     canvas.hidden = hidden; stage.hidden = hidden; toggle.hidden = false;
     document.body.classList.toggle("phone", !hidden);
@@ -403,7 +402,6 @@ try {
   };
   toggle.addEventListener("click", () => {
     hidden = !hidden;
-    try { localStorage.setItem("duo-phone-hidden", hidden ? "1" : "0"); } catch (e) {}
     apply();
   });
 

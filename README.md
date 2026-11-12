@@ -51,7 +51,7 @@ The page can show Apple's own iPhone Duo model above the text.
 - It stays **closed while there is no stock** and **unfolds when stock appears**, then folds again
   when the stock is gone.
 - The small phone icon in the bottom-right corner hides it and puts the text back in the middle of
-  the page. Click it again to bring the phone back. The choice is remembered.
+  the page. Click it again to bring the phone back. The phone is always shown when the page opens.
 
 The model is not in this repository, because it belongs to Apple. A script downloads it from
 apple.com to your machine instead:
