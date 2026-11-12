@@ -12,11 +12,11 @@ No account, no hosting, no dependencies.
 
 ## Screenshots
 
-Captured from the real page with sample data.
+Captured from the real page with sample stock data, with the optional 3D phone turned on.
 
 | No stock | In stock |
 | --- | --- |
-| ![Black screen reading No stock](screenshots/no-stock.png) | ![White screen reading In stock, listing two configurations with their stores](screenshots/in-stock.png) |
+| ![Black screen with a closed iPhone Duo above the words No stock](screenshots/no-stock.png) | ![White screen with an unfolded iPhone Duo above the words In stock and two configurations with their stores](screenshots/in-stock.png) |
 
 When Apple is rate limiting your network:
 
@@ -43,11 +43,13 @@ To use another port:
 PORT=5000 node server.mjs
 ```
 
-## Optional: 3D iPhone Duo background
+## Optional: 3D iPhone Duo
 
-The page can show Apple's own iPhone Duo model behind the text. Drag to turn it, scroll to zoom.
+The page can show Apple's own iPhone Duo model above the text.
 
-![No stock screen with the iPhone Duo model behind the text](screenshots/with-model.png)
+- **Drag** to turn it, **scroll** to zoom. Left alone, it turns slowly.
+- **Unfold / Fold** opens and closes it.
+- **Hide phone** removes it and puts the text back in the middle of the page. The choice is remembered.
 
 The model is not in this repository, because it belongs to Apple. A script downloads it from
 apple.com to your machine instead:
@@ -59,20 +61,23 @@ apple.com to your machine instead:
 Then reload the page. What the script does:
 
 1. Downloads Apple's AR model (`.usdz`, about 8 MB) from the iPhone Duo page on apple.com.
-2. Flattens it into one layer with `usdcat`, because browsers cannot follow the references inside
-   Apple's file.
+2. Picks the unfolded pose and flattens the file into one layer with `usdcat`, because browsers
+   cannot follow the references inside Apple's file.
 3. Saves the result as `model/duo.usdz`, which is gitignored.
 
 Notes:
 
 - macOS only. `usdcat` ships with macOS; there is nothing to install.
+- Star White by default. For the other colour: `COLOR=Night_Sky ./scripts/get-model.sh`.
 - If Apple moves the file, pass the new address: `./scripts/get-model.sh <url>`. Find it by
   searching the source of apple.com/iphone-duo for `.usdz`.
 - The model is Apple's copyrighted work. Keep it on your machine. Do not commit or share it.
-- To remove the background, delete the `model` folder.
+- To remove it for good, delete the `model` folder.
 - The model is drawn with [three.js](https://threejs.org), loaded from a CDN only when the model
   is present. Without it the page is plain and loads nothing extra.
-- It shows the phone closed. The file has no fold animation the browser can play.
+- Apple's file has two still poses and no fold animation. The page makes the fold itself by
+  bending the unfolded pose at the hinge, so the crease is sharper than on the real device, and
+  the cover display is dark when closed.
 
 ## Using the page
 

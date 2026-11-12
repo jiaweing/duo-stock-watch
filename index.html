@@ -48,17 +48,16 @@
   input { width: 9em; text-align: center; }
   button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
   button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-  /* Optional 3D phone behind the text. Drag anywhere empty to turn it. */
-  #bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; opacity: 0; transition: opacity 0.8s; cursor: grab; touch-action: none; }
-  #bg.ready { opacity: 0.55; }
+  /* Optional 3D phone, in its own block above the text. Drag to turn it, scroll to zoom. */
+  #bg { display: block; width: 100%; height: min(44vh, 420px); cursor: grab; touch-action: none; outline: none; }
   #bg:active { cursor: grabbing; }
-  main { position: relative; z-index: 1; pointer-events: none; }
-  main a, main button, main select, main input, main .note { pointer-events: auto; }
+  body.phone h1 { font-size: clamp(44px, 10vw, 104px); }
+  body.phone main { gap: 18px; }
 </style>
 </head>
 <body>
-<canvas id="bg" aria-hidden="true"></canvas>
 <main>
+  <canvas id="bg" aria-hidden="true" hidden></canvas>
   <h1 id="headline">Checking…</h1>
   <ul class="hits" id="hits" hidden></ul>
   <div class="sub" id="sub"></div>
@@ -67,6 +66,8 @@
     <select id="country" aria-label="Country"></select>
     <input id="place" type="text" aria-label="Postcode or city" autocomplete="off" spellcheck="false" hidden>
     <button id="alerts" type="button" aria-pressed="false">Alerts off</button>
+    <button id="fold" type="button" hidden>Unfold</button>
+    <button id="phone" type="button" hidden>Hide phone</button>
   </div>
 </main>
 
@@ -126,15 +127,18 @@
     tickClock();
   }
 
+  const clock = (seconds) => Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
+
   function tickClock() {
     if (!state) return;
     const now = Date.now() + skew;
     if (state.status === "blocked" || state.status === "error") {
       const left = Math.max(0, Math.round((state.nextAt - now) / 1000));
-      sub.textContent = left ? "Next try in " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0") : "Trying now";
+      sub.textContent = left ? "Next try in " + clock(left) : "Trying now";
     } else if (state.checkedAt) {
-      const s = Math.max(0, Math.round((now - state.checkedAt) / 1000));
-      sub.textContent = "Checked " + (s < 2 ? "just now" : s + " s ago");
+      const ago = Math.max(0, Math.round((now - state.checkedAt) / 1000));
+      const left = Math.max(0, Math.round((state.nextAt - now) / 1000));
+      sub.textContent = "Checked " + clock(ago) + " ago \u00b7 " + (left ? "next check in " + clock(left) : "checking now");
     } else sub.textContent = "";
   }
 
@@ -212,7 +216,79 @@
 <script type="module">
 // Optional background: Apple's iPhone Duo AR model, if scripts/get-model.sh has fetched it.
 // Nothing here is needed for stock checking; any failure just leaves the page plain.
-const canvas = document.getElementById("bg");
+// Turns the unfolded phone model into one that can fold. Apple's file has no fold animation, only
+// still poses, so this bends the unfolded pose at its hinge: every part left of the hinge swings
+// over onto the right half. Parts that cross the hinge (the inner display, the hinge itself) are
+// bent vertex by vertex.
+function foldable(THREE, source) {
+  source.updateMatrixWorld(true);
+  const parts = [];
+  source.traverse((o) => {
+    if (!o.isMesh) return;
+    const geo = o.geometry.clone().applyMatrix4(o.matrixWorld); // bake placement into the vertices
+    if (o.matrixWorld.determinant() < 0) {
+      if (geo.index) { const ix = geo.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } }
+      else o.material.side = THREE.DoubleSide;
+    }
+    geo.computeBoundingBox();
+    parts.push({ geo, material: o.material, box: geo.boundingBox.clone(), order: o.renderOrder });
+  });
+  const width = Math.max(...parts.map((p) => p.box.max.x - p.box.min.x));
+  // Drop helper shapes that are far thicker than a phone (the file carries an invisible bounding block).
+  const real = parts.filter((p) => p.box.max.z - p.box.min.z < width * 0.1);
+  const all = new THREE.Box3();
+  for (const p of real) all.union(p.box);
+  const hinge = (all.min.x + all.max.x) / 2, eps = width * 0.004, pivotZ = all.max.z;
+  const half = (all.max.x - hinge) / 2, midY = (all.min.y + all.max.y) / 2;
+
+  const group = new THREE.Group(), leaf = new THREE.Group(), bend = [];
+  leaf.position.set(hinge, 0, pivotZ);
+  group.add(leaf);
+  for (const p of real) {
+    // Keep each part's own centre as its position: see-through layers (glass over the wallpaper)
+    // are drawn back to front by that centre, and stacking them all at the origin breaks the order.
+    const mid = p.box.getCenter(new THREE.Vector3());
+    p.geo.translate(-mid.x, -mid.y, -mid.z);
+    const mesh = new THREE.Mesh(p.geo, p.material);
+    mesh.renderOrder = p.order;
+    // The lit screen image lies exactly on top of a black panel. Draw it after the panel and nudge
+    // it forward, or the two fight for the same depth and the screen comes out dark.
+    if (p.material.emissiveMap) {
+      mesh.renderOrder = p.order + 1;
+      p.material.polygonOffset = true; p.material.polygonOffsetFactor = -2; p.material.polygonOffsetUnits = -2;
+    }
+    mesh.position.copy(mid);
+    if (p.box.max.x <= hinge + eps) { mesh.position.x -= hinge; mesh.position.z -= pivotZ; leaf.add(mesh); }
+    else if (p.box.min.x >= hinge - eps) group.add(mesh);
+    else {
+      mesh.frustumCulled = false;
+      const pos = p.geo.attributes.position, nor = p.geo.attributes.normal;
+      bend.push({ pos, nor, mid, p0: pos.array.slice(), n0: nor ? nor.array.slice() : null });
+      group.add(mesh);
+    }
+  }
+
+  // t = 0 is unfolded, t = 1 is closed with the cover display facing the camera.
+  function set(t) {
+    const a = t * Math.PI, c = Math.cos(a), s = Math.sin(a);
+    leaf.rotation.y = a;
+    for (const b of bend) {
+      const P = b.pos.array, N = b.nor ? b.nor.array : null;
+      for (let i = 0; i < P.length; i += 3) {
+        const x = b.p0[i] + b.mid.x - hinge, z = b.p0[i + 2] + b.mid.z - pivotZ;
+        if (x >= 0) continue;
+        P[i] = hinge + x * c + z * s - b.mid.x; P[i + 2] = pivotZ - x * s + z * c - b.mid.z;
+        if (N) { const nx = b.n0[i], nz = b.n0[i + 2]; N[i] = nx * c + nz * s; N[i + 2] = -nx * s + nz * c; }
+      }
+      b.pos.needsUpdate = true; if (b.nor) b.nor.needsUpdate = true;
+    }
+    group.position.set(-(hinge + half * t), -midY, -pivotZ);
+  }
+  set(1);
+  return { group, set, width: all.max.x - all.min.x };
+}
+
+const canvas = document.getElementById("bg"), fold = document.getElementById("fold"), toggle = document.getElementById("phone");
 try {
   const probe = await fetch("/model/duo.usdz", { method: "HEAD" });
   if (!probe.ok) throw new Error("no model");
@@ -230,35 +306,66 @@ try {
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
   const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
 
-  const model = await new USDLoader().loadAsync("/model/duo.usdz");
-  const box = new THREE.Box3().setFromObject(model);
-  const size = box.getSize(new THREE.Vector3());
-  model.position.sub(box.getCenter(new THREE.Vector3()));
-  scene.add(model);
-
-  const reach = Math.max(size.x, size.y, size.z);
-  camera.position.set(reach * 0.9, reach * 0.25, reach * 2.1);
+  const phone = foldable(THREE, await new USDLoader().loadAsync("/model/duo.usdz"));
+  scene.add(phone.group);
+  const reach = phone.width;
+  camera.position.set(reach * 0.75, reach * 0.3, reach * 2.3);
 
   const controls = new OrbitControls(camera, canvas);
   controls.enablePan = false;
   controls.enableDamping = true;
   controls.minDistance = reach * 1.2;
-  controls.maxDistance = reach * 4;
-  controls.autoRotate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  controls.maxDistance = reach * 5;
+  const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  controls.autoRotate = !calm;
   controls.autoRotateSpeed = 1.2;
 
   const resize = () => {
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
-    camera.aspect = window.innerWidth / window.innerHeight;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
-  window.addEventListener("resize", resize);
-  resize();
+  new ResizeObserver(resize).observe(canvas);
 
-  renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
-  canvas.classList.add("ready");
+  // Show or hide the phone block. Hidden, the text sits alone in the middle of the page again.
+  let hidden = false;
+  try { hidden = localStorage.getItem("duo-phone-hidden") === "1"; } catch (e) {}
+  const apply = () => {
+    canvas.hidden = hidden; fold.hidden = hidden; toggle.hidden = false;
+    document.body.classList.toggle("phone", !hidden);
+    toggle.textContent = hidden ? "Show phone" : "Hide phone";
+    if (!hidden) resize();
+  };
+  toggle.addEventListener("click", () => {
+    hidden = !hidden;
+    try { localStorage.setItem("duo-phone-hidden", hidden ? "1" : "0"); } catch (e) {}
+    apply();
+  });
+
+  // Fold state eases toward its target: 1 closed, 0 unfolded.
+  let target = location.hash === "#unfolded" ? 0 : 1, at = target, last = performance.now();
+  phone.set(at);
+  renderer.setAnimationLoop((now) => {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (at !== target) {
+      at = calm || Math.abs(target - at) < 0.002 ? target : at + (target - at) * (1 - Math.exp(-dt * 4.5));
+      phone.set(at);
+    }
+    if (hidden) return;
+    controls.update();
+    renderer.render(scene, camera);
+  });
+  apply();
+  fold.textContent = target ? "Unfold" : "Fold";
+  fold.addEventListener("click", () => {
+    target = target ? 0 : 1;
+    fold.textContent = target ? "Unfold" : "Fold";
+  });
 } catch (error) {
-  canvas.hidden = true;
+  canvas.hidden = true; fold.hidden = true; toggle.hidden = true;
+  document.body.classList.remove("phone");
 }
 </script>
 </body>
