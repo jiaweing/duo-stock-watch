@@ -3,27 +3,68 @@
 One page that answers one question: which Apple Store has an iPhone Duo for pickup right now.
 
 It runs on your own computer. A small local server asks Apple's pickup endpoint every 15 seconds and
-the page shows the result. Black screen means no stock. White screen means stock, with the
-configuration, the store, and a link to buy.
+the page shows the result.
 
-## Run
+- **Black screen**: no stock.
+- **White screen**: in stock, with the configuration, the store, and a link to buy.
 
-Needs Node 20 or newer. No install step, no dependencies.
+No account, no hosting, no dependencies.
+
+## Quick start
+
+Needs [Node.js](https://nodejs.org) 20 or newer.
 
 ```bash
+git clone https://github.com/jiaweing/duo-stock-watch.git
+cd duo-stock-watch
 node server.mjs
 ```
 
 Then open http://localhost:4173 in any browser.
 
-Leave the terminal running. The server keeps checking even when the page is closed, and on macOS it
-posts a system notification when stock appears.
+Leave the terminal running. The server keeps checking even when the page is closed. Stop it with
+`Ctrl+C`.
 
-## Use
+To use another port:
 
-- **Country**: pick from the dropdown. The choice is saved in `config.json` next to the server.
-- **Postcode or city**: shown only for large countries, where Apple returns the stores nearest that place.
-- **Alerts**: click once to turn on sound and browser notifications for the open page.
+```bash
+PORT=5000 node server.mjs
+```
+
+## Using the page
+
+| Control | What it does |
+| --- | --- |
+| Country | Picks which country's Apple Stores to watch. Saved in `config.json`. |
+| Postcode or city | Shown only for large countries, where Apple returns the stores nearest that place. |
+| Alerts | Click once to turn on sound and browser notifications for the open page. |
+
+The headline tells you the state:
+
+| Headline | Meaning |
+| --- | --- |
+| No stock | Apple answered and nothing is available for pickup. |
+| In stock | At least one configuration is available. Each one is listed with its store. |
+| Blocked | Apple is refusing requests from your network. A countdown shows the next try. |
+| No stores | Apple found no stores near the postcode or city you entered. |
+| Check failed | The request to Apple did not go through. It retries in a minute. |
+| Server stopped | The page cannot reach `server.mjs`. Start it again. |
+
+## Alerts
+
+- **macOS notification**: sent by the server when new stock appears, even with the page closed.
+- **Browser notification and beeps**: sent by the open page after you turn Alerts on.
+
+An alert fires once each time a configuration appears at a store. If it sells out and comes back, it
+fires again.
+
+## Supported countries
+
+Singapore, Malaysia, Hong Kong, Taiwan, Thailand, Japan, South Korea, India, Australia, UAE, United
+Kingdom, Germany, France, Canada, United States.
+
+To add one, add a row to `COUNTRIES` in `server.mjs` with the country's apple.com path, its eight
+iPhone Duo part numbers (found in the source of that country's buy page), and a default postcode.
 
 ## How it works
 
@@ -31,34 +72,47 @@ Browsers refuse to read `apple.com` from another site's page, so the page cannot
 `server.mjs` does it instead:
 
 ```
-page  ->  http://localhost:4173/api/state  ->  server.mjs  ->  apple.com/<country>/shop/retail/pickup-message
+page  ->  localhost:4173/api/state  ->  server.mjs  ->  apple.com/<country>/shop/retail/pickup-message
 ```
 
-The server sends one request for all eight configurations and reads `pickupDisplay` for each store.
+The server sends one request covering all eight configurations and reads `pickupDisplay` for each
+store in the reply. However many tabs you open, Apple still gets one request per interval.
+
+The server listens on `127.0.0.1` only and rejects requests from other sites.
+
 The endpoint is unofficial. Apple can change or remove it at any time.
 
 ## Rate limits
 
 Apple blocks networks that ask too often. A blocked request comes back as HTTP 541.
 
-- The server never asks more than once every 5 seconds, and normally once every 15.
+- The server normally asks once every 15 seconds and never more than once every 5.
 - After a block it waits 5, then 10, 20, and 30 minutes between tries.
-- The page shows **Blocked** with a countdown while this is happening.
+- Running several copies, or switching country over and over, makes a block more likely.
 
-Running several copies, or switching country over and over, makes a block more likely.
+Please keep the interval as it is. Faster polling gets your network blocked and does not find stock
+meaningfully sooner.
 
-## Status
+## Known limits
 
-- Singapore is the only country seen returning stock data, tested in a browser.
+- Singapore is the only country seen returning stock data so far, tested in a browser.
 - Part numbers for the other 14 countries come from each country's buy page. Their stock calls and
   default postcodes are untested.
-- The server's own requests to Apple have only been seen while the network was blocked, so a
-  successful check from `server.mjs` is not yet confirmed.
+- A successful check made by `server.mjs` itself is not yet confirmed. It has only been run while
+  the test network was blocked, so Apple may treat it differently from a browser.
+- System notifications are macOS only. Other platforms get the browser notification and beeps.
+
+Issues and fixes are welcome.
 
 ## Files
 
-- `server.mjs`: the checker and local web server
-- `index.html`: the page
-- `config.json`: your saved country and postcode, created on first change, not committed
+| File | Purpose |
+| --- | --- |
+| `server.mjs` | The checker and local web server |
+| `index.html` | The page |
+| `config.json` | Your saved country and postcode. Created on first change, not committed. |
 
-Not affiliated with Apple.
+## Disclaimer
+
+Personal project. Not affiliated with, endorsed by, or connected to Apple Inc. iPhone and Apple
+Store are trademarks of Apple Inc.
