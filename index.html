@@ -48,9 +48,13 @@
   input { width: 9em; text-align: center; }
   button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
   button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.5; pointer-events: none; }
+  body.in #bg { opacity: 0.6; }
+  main { position: relative; z-index: 1; }
 </style>
 </head>
 <body>
+<canvas id="bg" aria-hidden="true"></canvas>
 <main>
   <h1 id="headline">Checking…</h1>
   <ul class="hits" id="hits" hidden></ul>
@@ -63,6 +67,100 @@
   </div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// Background: a slowly turning, folding phone drawn with three.js. Purely decorative.
+(() => {
+  const canvas = document.getElementById("bg");
+  if (!window.THREE || !canvas) return;
+  const T = window.THREE;
+  let renderer;
+  try { renderer = new T.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch (e) { canvas.hidden = true; return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+  const scene = new T.Scene();
+  const cam = new T.PerspectiveCamera(32, 1, 0.1, 50);
+  cam.position.set(0, 0, 6.2);
+  scene.add(new T.AmbientLight(0xffffff, 0.5));
+  const key = new T.DirectionalLight(0xffffff, 1.0); key.position.set(3, 4, 5); scene.add(key);
+  const rim = new T.DirectionalLight(0xffffff, 0.9); rim.position.set(-4, 2, -4); scene.add(rim);
+
+  const W = 1.05, H = 2.2, D = 0.075;
+  function slab(w, h, d, r) {
+    const s = new T.Shape(), x = -w / 2, y = -h / 2;
+    s.moveTo(x + r, y); s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
+    s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
+    s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
+    const g = new T.ExtrudeGeometry(s, { depth: d, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 3, curveSegments: 14 });
+    g.translate(0, 0, -d / 2);
+    return g;
+  }
+
+  const body = new T.MeshStandardMaterial({ color: 0x2a2c33, metalness: 0.65, roughness: 0.35 });
+  const glass = new T.MeshStandardMaterial({ color: 0x050507, metalness: 0.4, roughness: 0.12 });
+  const lens = new T.MeshStandardMaterial({ color: 0x0b0c10, metalness: 0.9, roughness: 0.15 });
+
+  const phone = new T.Group();
+  const halves = [-1, 1].map((side) => {
+    const pivot = new T.Group();
+    const shell = new T.Mesh(slab(W, H, D, 0.13), body);
+    shell.position.x = side * W / 2;
+    const inner = new T.Mesh(slab(W - 0.07, H - 0.07, 0.004, 0.1), glass); // half of the inner display
+    inner.position.set(side * W / 2, 0, D / 2 + 0.013);
+    pivot.add(shell, inner);
+    if (side === 1) { // cover display on the outside
+      const cover = new T.Mesh(slab(W - 0.09, H - 0.09, 0.004, 0.1), glass);
+      cover.position.set(W / 2, 0, -D / 2 - 0.013);
+      pivot.add(cover);
+    } else { // camera bump on the outside
+      const bump = new T.Mesh(slab(0.46, 0.46, 0.03, 0.12), body);
+      bump.position.set(-W / 2 - 0.2, H / 2 - 0.36, -D / 2 - 0.026);
+      pivot.add(bump);
+      for (const [dx, dy] of [[-0.1, 0.1], [0.1, 0.1], [0, -0.1]]) {
+        const l = new T.Mesh(new T.CylinderGeometry(0.075, 0.075, 0.03, 28), lens);
+        l.rotation.x = Math.PI / 2;
+        l.position.set(-W / 2 - 0.2 + dx, H / 2 - 0.36 + dy, -D / 2 - 0.052);
+        pivot.add(l);
+      }
+    }
+    phone.add(pivot);
+    return pivot;
+  });
+  const hinge = new T.Mesh(new T.CylinderGeometry(D * 0.56, D * 0.56, H * 0.97, 24), body);
+  phone.add(hinge);
+  scene.add(phone);
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    cam.aspect = w / h; cam.updateProjectionMatrix();
+    phone.scale.setScalar(Math.min(1, (w / h) * 0.95));
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  const still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const dark = new T.Color(0x2a2c33), light = new T.Color(0xf2f1ee);
+  const glassDark = new T.Color(0x050507), glassLight = new T.Color(0xe4e4e8);
+  const t0 = performance.now();
+  function frame(now) {
+    const t = still ? 2.2 : (now - t0) / 1000 + 2.2;
+    const fold = 0.1 + 0.55 * (0.5 - 0.5 * Math.cos(t * 0.45)); // each half swings between almost flat and about 37 degrees
+    halves[0].rotation.y = fold; halves[1].rotation.y = -fold;
+    phone.rotation.set(-0.16, t * 0.22, 0.1);
+    const lit = document.body.classList.contains("in");
+    body.color.lerp(lit ? light : dark, 0.15);
+    glass.color.lerp(lit ? glassLight : glassDark, 0.15);
+    // Without an environment map, metal renders dark. Go matte on the white screen so the phone stays pale.
+    body.metalness = lit ? 0.05 : 0.65; glass.metalness = lit ? 0 : 0.4;
+    body.roughness = lit ? 0.6 : 0.35; glass.roughness = lit ? 0.45 : 0.12;
+    renderer.render(scene, cam);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
