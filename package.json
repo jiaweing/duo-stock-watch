@@ -1,0 +1,13 @@
+{
+  "name": "duo-stock-watch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local page that shows which Apple Stores have iPhone Duo in stock for pickup right now.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duo Stock Watch</title>
+<style>
+  /* One block, centered both ways. Black while there is no stock, white the moment there is. */
+  :root {
+    --bg: #000000; --fg: #f5f5f7; --muted: #86868b; --card: #1d1d1f; --accent: #2997ff; --on-accent: #ffffff;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color-scheme: dark;
+  }
+  body.in { --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --card: #f5f5f7; --accent: #0071e3; color-scheme: light; }
+  html, body { height: 100%; margin: 0; }
+  [hidden] { display: none !important; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 17px; line-height: 1.47;
+    -webkit-font-smoothing: antialiased;
+    display: grid; place-items: center; text-align: center;
+    padding: 24px 16px; box-sizing: border-box;
+  }
+  main { width: 100%; max-width: 820px; display: flex; flex-direction: column; align-items: center; gap: 26px; min-width: 0; }
+  h1 { font-weight: 600; font-size: clamp(56px, 15vw, 144px); line-height: 1.03; letter-spacing: -0.035em; margin: 0; text-wrap: balance; }
+  .sub { color: var(--muted); font-size: clamp(15px, 2.2vw, 19px); font-variant-numeric: tabular-nums; min-height: 1.47em; }
+  .hits { width: 100%; display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+  .hits a {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; text-align: left;
+    background: var(--card); color: var(--fg); text-decoration: none; border-radius: 22px;
+    padding: clamp(18px, 3.4vw, 28px) clamp(20px, 4vw, 32px);
+  }
+  .hits .what { min-width: 0; font-size: clamp(22px, 4.6vw, 36px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+  .hits small { display: block; color: var(--muted); font-size: clamp(15px, 2.4vw, 19px); font-weight: 400; letter-spacing: 0; margin-top: 4px; }
+  .hits .go { background: var(--accent); color: var(--on-accent); border-radius: 980px; padding: 10px 22px; font-size: 17px; white-space: nowrap; }
+  .note { background: var(--card); border-radius: 18px; padding: 16px 20px; font-size: 15px; }
+  .controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; }
+  button, select, input {
+    font: 400 15px var(--font); color: var(--fg); background: var(--card);
+    border: 0; border-radius: 980px; padding: 10px 18px; min-width: 0;
+  }
+  button, select { cursor: pointer; }
+  select {
+    -webkit-appearance: none; appearance: none; padding-right: 40px; max-width: 100%;
+    background-color: var(--card);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.5 6 6l4.5-4.5' fill='none' stroke='%2386868b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position: right 16px center; background-size: 11px 8px; background-repeat: no-repeat;
+  }
+  input { width: 9em; text-align: center; }
+  button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+  button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="headline">Checking…</h1>
+  <ul class="hits" id="hits" hidden></ul>
+  <div class="sub" id="sub"></div>
+  <div class="note" id="note" hidden></div>
+  <div class="controls">
+    <select id="country" aria-label="Country"></select>
+    <input id="place" type="text" aria-label="Postcode or city" autocomplete="off" spellcheck="false" hidden>
+    <button id="alerts" type="button" aria-pressed="false">Alerts off</button>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const headline = $("headline"), sub = $("sub"), hits = $("hits"), note = $("note");
+  const countrySel = $("country"), placeIn = $("place"), alertsBtn = $("alerts");
+
+  let state = null, skew = 0, seen = null, alertsOn = false, audio = null, countriesDrawn = false;
+
+  const flag = (code) => {
+    const iso = (code === "uk" ? "gb" : code).toUpperCase();
+    return String.fromCodePoint(...[...iso].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65));
+  };
+
+  function drawCountries() {
+    if (countriesDrawn) return;
+    for (const c of state.countries) {
+      const o = document.createElement("option");
+      o.value = c.code; o.textContent = flag(c.code) + "  " + c.name;
+      countrySel.append(o);
+    }
+    countriesDrawn = true;
+  }
+
+  function draw() {
+    drawCountries();
+    if (document.activeElement !== countrySel) countrySel.value = state.country;
+    const big = state.countries.find((c) => c.code === state.country)?.big;
+    placeIn.hidden = !big;
+    if (document.activeElement !== placeIn) placeIn.value = state.place;
+
+    const found = state.status === "ok" ? state.found : [];
+    hits.textContent = "";
+    for (const f of found) {
+      const li = document.createElement("li"), a = document.createElement("a");
+      const what = document.createElement("span"), s = document.createElement("small"), go = document.createElement("span");
+      a.href = state.buyUrl; a.target = "_blank"; a.rel = "noopener";
+      what.className = "what"; what.textContent = f.label; s.textContent = f.store; what.append(s);
+      go.className = "go"; go.textContent = "Buy";
+      a.append(what, go); li.append(a); hits.append(li);
+    }
+    hits.hidden = found.length === 0;
+    document.body.classList.toggle("in", found.length > 0);
+    document.title = found.length ? "IN STOCK · Duo Stock Watch" : "Duo Stock Watch";
+
+    const words = { checking: "Checking…", blocked: "Blocked", error: "Check failed", no_stores: "No stores" };
+    headline.textContent = found.length ? "In stock" : (words[state.status] || "No stock");
+
+    const notes = {
+      blocked: "Apple is blocking stock requests from this network. Waiting longer between tries so the block can lift.",
+      error: "Could not reach Apple" + (state.message ? " (" + state.message + ")" : "") + ". Trying again shortly.",
+      no_stores: "Apple found no stores near “" + state.place + "”. Try another postcode or city.",
+    };
+    note.textContent = notes[state.status] || ""; note.hidden = !notes[state.status];
+    tickClock();
+  }
+
+  function tickClock() {
+    if (!state) return;
+    const now = Date.now() + skew;
+    if (state.status === "blocked" || state.status === "error") {
+      const left = Math.max(0, Math.round((state.nextAt - now) / 1000));
+      sub.textContent = left ? "Next try in " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0") : "Trying now";
+    } else if (state.checkedAt) {
+      const s = Math.max(0, Math.round((now - state.checkedAt) / 1000));
+      sub.textContent = "Checked " + (s < 2 ? "just now" : s + " s ago");
+    } else sub.textContent = "";
+  }
+
+  function tone(freq, t, len, vol) {
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.frequency.value = freq; o.type = "square";
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    o.connect(g).connect(audio.destination); o.start(t); o.stop(t + len + 0.02);
+  }
+
+  function alarm(fresh) {
+    if (!alertsOn) return;
+    if (audio) for (let i = 0; i < 12; i++) tone(i % 2 ? 1175 : 880, audio.currentTime + i * 0.35, 0.28, 0.25);
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("iPhone Duo in stock", { body: fresh.map((f) => f.label + " at " + f.store).join("\n") });
+    }
+  }
+
+  alertsBtn.addEventListener("click", async () => {
+    alertsOn = !alertsOn;
+    if (alertsOn) {
+      try { audio = audio || new AudioContext(); await audio.resume(); tone(880, audio.currentTime, 0.2, 0.15); } catch (e) {}
+      try { if ("Notification" in window && Notification.permission === "default") await Notification.requestPermission(); } catch (e) {}
+      try { await navigator.wakeLock?.request("screen"); } catch (e) {}
+    }
+    alertsBtn.setAttribute("aria-pressed", String(alertsOn));
+    alertsBtn.textContent = alertsOn ? "Alerts on" : "Alerts off";
+  });
+
+  function take(next) {
+    state = next; skew = next.now - Date.now();
+    const found = next.status === "ok" ? next.found : [];
+    const keys = new Set(found.map((f) => f.key));
+    const fresh = seen ? found.filter((f) => !seen.has(f.key)) : found;
+    if (next.status === "ok") seen = keys;
+    draw();
+    if (fresh.length) alarm(fresh);
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch("/api/state", { cache: "no-store" });
+      take(await res.json());
+    } catch (e) {
+      headline.textContent = "Server stopped";
+      document.body.classList.remove("in"); hits.hidden = true; sub.textContent = "";
+      note.textContent = "The local checker is not running. Start it again with: node server.mjs"; note.hidden = false;
+    }
+  }
+
+  async function saveConfig() {
+    seen = null;
+    try {
+      const res = await fetch("/api/config", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ country: countrySel.value, place: placeIn.hidden ? undefined : placeIn.value }),
+      });
+      take(await res.json());
+    } catch (e) {}
+  }
+  countrySel.addEventListener("change", () => { placeIn.hidden = true; saveConfig(); });
+  placeIn.addEventListener("change", saveConfig);
+
+  poll();
+  setInterval(poll, 3000);
+  setInterval(tickClock, 1000);
+})();
+</script>
+</body>
+</html>
